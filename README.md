@@ -1,4 +1,4 @@
-# A simple tls <-> unix socker proxy
+# A simple tls <-> unix socket proxy
 
 This will verify all incoping tls connections again the provided
 ca, and proxy valid connection onward to the unix socket.
