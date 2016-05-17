@@ -13,7 +13,8 @@ import (
 
 var (
 	listen   = flag.String("listen", ":6658", "host:port to listen on")
-	sockPath = flag.String("sock", "sock", "Path to unix socket to proxy to")
+	sockPath = flag.String("sock", "", "Path to unix socket to proxy to")
+	tcpEnd   = flag.String("tcp", "", "TCP remote end point to connect to")
 	certPath = flag.String("cert", "cert.pem", "Path to cert")
 	keyPath  = flag.String("key", "key.pem", "Path to key")
 	caPath   = flag.String("ca", "ca.pem", "Path to CA to auth clients against")
@@ -23,9 +24,32 @@ var (
 func main() {
 	flag.Parse()
 
-	sock, err := net.ResolveUnixAddr("unix", *sockPath)
-	if err != nil {
-		log.Fatalf("Could not create listener, " + err.Error())
+	if *tcpEnd == "" && *sockPath == "" {
+		log.Fatalf("You must specify a tcp or socket to pass traffic to\n")
+	}
+
+	if *tcpEnd != "" && *sockPath != "" {
+		log.Fatalf("Can only specify one tcp or unix socket to pass traffic to\n")
+	}
+
+	method := ""
+	addr := ""
+	if *sockPath != "" {
+		_, err := net.ResolveUnixAddr("unix", *sockPath)
+		if err != nil {
+			log.Fatalf("Could resolve socket name, " + err.Error())
+		}
+		method = "unix"
+		addr = *sockPath
+	}
+
+	if *tcpEnd != "" {
+		_, err := net.ResolveTCPAddr("tcp", *tcpEnd)
+		if err != nil {
+			log.Fatalf("Could resolve TCP address, " + err.Error())
+		}
+		method = "tcp"
+		addr = *tcpEnd
 	}
 
 	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
@@ -65,14 +89,14 @@ func main() {
 			log.Printf("Could not accept connection, %v", err.Error())
 		}
 		log.Printf("Accepted connection from %v", conn.RemoteAddr())
-		go handleConnection(sock, conn)
+		go handleConnection(method, addr, conn)
 	}
 }
 
-func handleConnection(addr *net.UnixAddr, c net.Conn) {
-	oc, err := net.DialUnix("unix", nil, addr)
+func handleConnection(method, addr string, c net.Conn) {
+	oc, err := net.Dial(method, addr)
 	if err != nil {
-		log.Printf("Could not connect to %v, %v", *addr, err.Error())
+		log.Printf("Could not connect to %v socket %v, %v", method, addr, err.Error())
 		c.Close()
 		return
 	}
