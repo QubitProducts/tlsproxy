@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"regexp"
 )
 
 var (
@@ -33,6 +34,7 @@ var (
 	keyPath  = flag.String("key", "key.pem", "Path to key")
 	caPath   = flag.String("ca", "ca.pem", "Path to CA to auth clients against")
 	noverify = flag.Bool("no-verify", false, "Disable verification, (voids the entire point of this, just for testing)")
+	regexStr = flag.String("regex", ".*", "Regular expression to match against CNs (start and end anchors will be added)")
 )
 
 func main() {
@@ -43,6 +45,11 @@ func main() {
 	}
 
 	if *tcpEnd != "" && *sockPath != "" {
+		log.Fatalf("Can only specify one tcp or unix socket to pass traffic to\n")
+	}
+
+	rx, err := regexp.Compile("^" + *regexStr + "$")
+	if err != nil {
 		log.Fatalf("Can only specify one tcp or unix socket to pass traffic to\n")
 	}
 
@@ -83,7 +90,9 @@ func main() {
 
 	config := tls.Config{
 		Certificates: []tls.Certificate{cert},
+		RootCAs:      pool,
 	}
+	config.BuildNameToCertificate()
 
 	if !*noverify {
 		config.ClientAuth = tls.RequireAndVerifyClientCert
@@ -102,6 +111,32 @@ func main() {
 		if err != nil {
 			log.Printf("Could not accept connection, %v", err.Error())
 		}
+
+		tlsconn, ok := conn.(*tls.Conn)
+		if !ok {
+			log.Printf("Failed to cast net.Conn from tls.Conn, no idea how that can happen!\n")
+		}
+
+		// We want to specifically match hostnames, so we'll manually trigger the
+		// handshake here so that ConnectionState is populated when we attempt
+		// verification
+		tlsconn.Handshake()
+
+		if !*noverify {
+			verified := false
+			for _, p := range tlsconn.ConnectionState().PeerCertificates {
+				if rx.Match([]byte(p.Subject.CommonName)) {
+					verified = true
+					break
+				}
+			}
+			if !verified {
+				log.Printf("Connect from %v denied, no matching client certificates found", conn.RemoteAddr())
+				conn.Close()
+				continue
+			}
+		}
+
 		log.Printf("Accepted connection from %v", conn.RemoteAddr())
 		go handleConnection(method, addr, conn)
 	}

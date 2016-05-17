@@ -16,6 +16,8 @@ Usage of ./tlsproxy:
     	host:port to listen on (default ":6658")
   -no-verify
     	Disable verification, (voids the entire point of this, just for testing)
+  -regex string
+    	Regular expression to match against CNs (start and end anchors will be added) (default ".*")
   -sock string
     	Path to unix socket to proxy to
   -tcp string
