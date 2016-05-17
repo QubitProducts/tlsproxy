@@ -1,2 +1,4 @@
 tlsproxy
 *.pem
+*.deb
+dist
