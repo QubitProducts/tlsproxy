@@ -8,12 +8,28 @@
 			"Rev": "7e54b5c2aa6eaff4286c44129c3def899dff528c"
 		},
 		{
+			"ImportPath": "github.com/golang/glog",
+			"Rev": "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
+		},
+		{
 			"ImportPath": "github.com/rcrowley/go-metrics",
 			"Rev": "eeba7bd0dd01ace6e690fa833b3f22aaec29af43"
 		},
 		{
 			"ImportPath": "github.com/rcrowley/go-metrics/exp",
 			"Rev": "eeba7bd0dd01ace6e690fa833b3f22aaec29af43"
+		},
+		{
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "35ec611a141ee705590b9eb64d673f9e6dfeb1ac"
+		},
+		{
+			"ImportPath": "golang.org/x/net/internal/timeseries",
+			"Rev": "35ec611a141ee705590b9eb64d673f9e6dfeb1ac"
+		},
+		{
+			"ImportPath": "golang.org/x/net/trace",
+			"Rev": "35ec611a141ee705590b9eb64d673f9e6dfeb1ac"
 		}
 	]
 }
