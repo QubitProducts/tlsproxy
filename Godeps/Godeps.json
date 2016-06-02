@@ -1,0 +1,19 @@
+{
+	"ImportPath": "github.com/QubitProducts/tlsproxy",
+	"GoVersion": "go1.6",
+	"GodepVersion": "v74",
+	"Deps": [
+		{
+			"ImportPath": "github.com/cyberdelia/go-metrics-graphite",
+			"Rev": "7e54b5c2aa6eaff4286c44129c3def899dff528c"
+		},
+		{
+			"ImportPath": "github.com/rcrowley/go-metrics",
+			"Rev": "eeba7bd0dd01ace6e690fa833b3f22aaec29af43"
+		},
+		{
+			"ImportPath": "github.com/rcrowley/go-metrics/exp",
+			"Rev": "eeba7bd0dd01ace6e690fa833b3f22aaec29af43"
+		}
+	]
+}

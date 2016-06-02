@@ -15,7 +15,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
@@ -24,6 +23,11 @@ import (
 	"log"
 	"net"
 	"regexp"
+	"time"
+
+	"github.com/cyberdelia/go-metrics-graphite"
+	"github.com/rcrowley/go-metrics"
+	"github.com/rcrowley/go-metrics/exp"
 )
 
 var (
@@ -35,7 +39,20 @@ var (
 	caPath   = flag.String("ca", "ca.pem", "Path to CA to auth clients against")
 	noverify = flag.Bool("no-verify", false, "Disable verification, (voids the entire point of this, just for testing)")
 	regexStr = flag.String("regex", ".*", "Regular expression to match against CNs (start and end anchors will be added)")
+	gphtStr  = flag.String("graphite", "", "Graphite endpoint")
 )
+
+func runMetrics() {
+	exp.Exp(metrics.DefaultRegistry)
+	if *gphtStr != "" {
+		addr, err := net.ResolveTCPAddr("tcp", *gphtStr)
+		if err != nil {
+			log.Fatal("could not resolve graphite address, ", err.Error())
+		}
+		go graphite.Graphite(metrics.DefaultRegistry,
+			1*time.Second, "tlsproxy", addr)
+	}
+}
 
 func main() {
 	flag.Parse()
@@ -99,7 +116,7 @@ func main() {
 		config.ClientCAs = pool
 	}
 
-	config.Rand = rand.Reader
+	runMetrics()
 
 	lsnr, err := tls.Listen("tcp", *listen, &config)
 	if err != nil {
@@ -117,6 +134,9 @@ func main() {
 			log.Printf("Failed to cast net.Conn from tls.Conn, no idea how that can happen!\n")
 		}
 
+		tc := metrics.GetOrRegisterCounter("connections.total", metrics.DefaultRegistry)
+		tc.Inc(1)
+
 		// We want to specifically match hostnames, so we'll manually trigger the
 		// handshake here so that ConnectionState is populated when we attempt
 		// verification
@@ -131,6 +151,9 @@ func main() {
 				}
 			}
 			if !verified {
+				fc := metrics.GetOrRegisterCounter("connections.failed", metrics.DefaultRegistry)
+				fc.Inc(1)
+
 				log.Printf("Connect from %v denied, no matching client certificates found", conn.RemoteAddr())
 				conn.Close()
 				continue
@@ -143,6 +166,10 @@ func main() {
 }
 
 func handleConnection(method, addr string, c net.Conn) {
+	ac := metrics.GetOrRegisterCounter("connections.active", metrics.DefaultRegistry)
+	ac.Inc(1)
+	defer ac.Dec(1)
+
 	oc, err := net.Dial(method, addr)
 	if err != nil {
 		log.Printf("Could not connect to %v socket %v, %v", method, addr, err.Error())
@@ -151,7 +178,11 @@ func handleConnection(method, addr string, c net.Conn) {
 	}
 
 	go func() {
+		obs := metrics.GetOrRegisterCounter("bytes.recv", metrics.DefaultRegistry)
+
 		bs, err := io.Copy(c, oc)
+		obs.Inc(bs)
+
 		if err != nil {
 			log.Printf("Error on connection from %v to %v, ", c.RemoteAddr(), oc.RemoteAddr(), err.Error())
 		}
@@ -160,7 +191,11 @@ func handleConnection(method, addr string, c net.Conn) {
 	}()
 
 	go func() {
+		ibs := metrics.GetOrRegisterCounter("bytes.sent", metrics.DefaultRegistry)
+
 		bs, err := io.Copy(oc, c)
+		ibs.Inc(bs)
+
 		if err != nil {
 			log.Printf("Error on connection from %v to %v, %v", oc.RemoteAddr(), c.RemoteAddr(), err.Error())
 		}
