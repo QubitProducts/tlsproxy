@@ -22,7 +22,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/cyberdelia/go-metrics-graphite"
@@ -44,6 +46,8 @@ var (
 
 func runMetrics() {
 	exp.Exp(metrics.DefaultRegistry)
+	go metrics.Log(metrics.DefaultRegistry, 5*time.Second, log.New(os.Stderr, "metrics: ", log.Lmicroseconds))
+
 	if *gphtStr != "" {
 		addr, err := net.ResolveTCPAddr("tcp", *gphtStr)
 		if err != nil {
@@ -151,7 +155,7 @@ func main() {
 				}
 			}
 			if !verified {
-				fc := metrics.GetOrRegisterCounter("connections.failed", metrics.DefaultRegistry)
+				fc := metrics.GetOrRegisterCounter("connections.failed.verify", metrics.DefaultRegistry)
 				fc.Inc(1)
 
 				log.Printf("Connect from %v denied, no matching client certificates found", conn.RemoteAddr())
@@ -161,6 +165,7 @@ func main() {
 		}
 
 		log.Printf("Accepted connection from %v", conn.RemoteAddr())
+
 		go handleConnection(method, addr, conn)
 	}
 }
@@ -172,34 +177,44 @@ func handleConnection(method, addr string, c net.Conn) {
 
 	oc, err := net.Dial(method, addr)
 	if err != nil {
+		metrics.GetOrRegisterCounter("connections.failed.refused", metrics.DefaultRegistry).Inc(1)
 		log.Printf("Could not connect to %v socket %v, %v", method, addr, err.Error())
 		c.Close()
 		return
 	}
 
-	go func() {
-		obs := metrics.GetOrRegisterCounter("bytes.recv", metrics.DefaultRegistry)
+	cclose := make(chan struct{}, 1)
+	sclose := make(chan struct{}, 1)
+	var wait chan struct{}
 
-		bs, err := io.Copy(c, oc)
-		obs.Inc(bs)
+	go copier(oc, c, "send", cclose)
+	go copier(c, oc, "recv", sclose)
 
-		if err != nil {
-			log.Printf("Error on connection from %v to %v, ", c.RemoteAddr(), oc.RemoteAddr(), err.Error())
-		}
+	select {
+	case <-cclose:
+		oc.Close()
+		wait = sclose
+	case <-sclose:
+		c.Close()
+		wait = cclose
+	}
 
-		log.Printf("Connection from %v to %v closed, transferred %v bytes", c.RemoteAddr(), oc.RemoteAddr(), bs)
-	}()
+	<-wait
+}
 
-	go func() {
-		ibs := metrics.GetOrRegisterCounter("bytes.sent", metrics.DefaultRegistry)
+func copier(dst, src net.Conn, dir string, srcClosed chan struct{}) {
 
-		bs, err := io.Copy(oc, c)
-		ibs.Inc(bs)
+	bs, err := io.Copy(dst, src)
+	srcClosed <- struct{}{}
 
-		if err != nil {
-			log.Printf("Error on connection from %v to %v, %v", oc.RemoteAddr(), c.RemoteAddr(), err.Error())
-		}
+	metrics.GetOrRegisterCounter("bytes."+dir, metrics.DefaultRegistry).Inc(bs)
 
-		log.Printf("Connection from %v to %v closed, transferred %v bytes", oc.RemoteAddr(), c.RemoteAddr(), bs)
-	}()
+	// This is horrid (but good enough for Kube, basically, we're getting a
+	// tlsconn in which doesn't support CloseRead, so we can't gently half close
+	// these.
+	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
+		log.Printf("Error on connection from %v to %v, ", src.RemoteAddr(), dst.RemoteAddr(), err.Error())
+	}
+
+	log.Printf("Connection from %v to %v closed, transferred %v bytes", src.RemoteAddr(), dst.RemoteAddr(), bs)
 }
