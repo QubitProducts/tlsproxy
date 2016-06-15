@@ -3,7 +3,7 @@
 This will verify all incoping tls connections again the provided
 ca, and proxy valid connection onward to the unix socket.
 
-UsagE:
+Usage:
 ```
 Usage of ./tlsproxy:
   -ca string
