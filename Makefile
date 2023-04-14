@@ -13,7 +13,7 @@ PWD=$(shell pwd)
 
 all: package
 
-bianry: clean-bianry
+binary: clean-binary
 	mkdir -p build/$(PACKAGE_NAME)/src/$(GOPKG)
 	cp *.go build/$(PACKAGE_NAME)/src/$(GOPKG)
 	GOPATH=$(PWD)/build/$(PACKAGE_NAME) cd build/$(PACKAGE_NAME)/src/${GOPKG} && go build -a -o target ./
@@ -22,10 +22,10 @@ bianry: clean-bianry
 	mkdir -p dist/etc/init
 	install -m644 $(BINNAME).conf dist/etc/init/$(BINNAME).conf
 
-clean-bianry:
+clean-binary:
 	rm -f dist/usr/local/bin/$(BINNAME)
 
-package: clean bianry
+package: clean binary
 	cd dist && \
 	  fpm \
 	  -t $(TARGET) \
